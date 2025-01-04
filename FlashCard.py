@@ -13,8 +13,10 @@ class FlashCard:
 
         self.words = word_list
         self.current_index = 0
+        self.current_word = self.words[self.current_index]
         self.flipped = False
         self.saved_cards = False
+        self.english_mode = False
 
         # Initialize audio
         pygame.mixer.init()
@@ -35,10 +37,21 @@ class FlashCard:
         # Romanized Word
         self.romanized_label = self.canvas.create_text(404, 314, text=self.words[self.current_index].romanized, font=(ENGLISH_FONT, 24), fill=WHITE_COLOUR, state=HIDDEN)
 
-    def get_card(self):
-        word = self.words[self.current_index]
-        self.canvas.itemconfig(self.word_label, text=word.korean, fill=WHITE_COLOUR)
-        self.canvas.itemconfig(self.romanized_label, text=word.romanized, state=HIDDEN)
+    def get_card(self, word=None):
+        if word is None:
+            self.current_word = self.words[self.current_index]
+            self.canvas.itemconfigure(self.word_label, font=(KOREAN_FONT, 48, "bold"))
+            self.canvas.itemconfigure(self.romanized_label, font=(ENGLISH_FONT, 24))
+        else:
+            self.current_word = word
+            pyperclip.copy(self.current_word.korean)
+            self.canvas.itemconfigure(self.word_label, font=(KOREAN_FONT, 24, "bold"))
+            self.canvas.itemconfigure(self.romanized_label, font=(ENGLISH_FONT, 12))
+
+        pyperclip.copy(self.current_word.korean)
+
+        self.canvas.itemconfig(self.word_label, text=self.current_word.korean, fill=WHITE_COLOUR)
+        self.canvas.itemconfig(self.romanized_label, text=self.current_word.romanized, state=HIDDEN)
 
         self.canvas.itemconfig(self.flashcard, image=self.red_card)
         self.flipped = FALSE
@@ -49,12 +62,10 @@ class FlashCard:
 
     def next_word(self, event=None):
         self.current_index = (self.current_index + 1) % len(self.words)
-        pyperclip.copy(self.words[self.current_index].korean)
         self.get_card()
 
     def prev_word(self, event=None):
         self.current_index = (self.current_index - 1) % len(self.words)
-        pyperclip.copy(self.words[self.current_index].korean)
         self.get_card()
 
     def dont_know_word(self):
@@ -62,10 +73,8 @@ class FlashCard:
         self.next_word()
 
     def play_audio(self):
-        word = self.words[self.current_index]
-
         korean_audio = BytesIO()
-        tts = gTTS(text=word.korean, lang='ko')
+        tts = gTTS(text=self.current_word.korean, lang='ko')
         tts.write_to_fp(korean_audio)
         korean_audio.seek(0)
         pygame.mixer.music.load(korean_audio)
@@ -81,16 +90,14 @@ class FlashCard:
         new_state = FALSE if self.flipped else TRUE
         self.flipped = new_state
 
-        word = self.words[self.current_index]
-
         if self.flipped:
             self.canvas.itemconfig(self.flashcard, image=self.blue_card)
-            self.canvas.itemconfig(self.word_label, text=word.english, fill=BLACK_COLOUR)
+            self.canvas.itemconfig(self.word_label, text=self.current_word.english, fill=BLACK_COLOUR)
             self.canvas.itemconfig(self.romanized_label, text="")
         else:
             self.canvas.itemconfig(self.flashcard, image=self.red_card)
-            self.canvas.itemconfig(self.word_label, text=word.korean, fill=WHITE_COLOUR)
-            self.canvas.itemconfig(self.romanized_label, text=word.romanized)
+            self.canvas.itemconfig(self.word_label, text=self.current_word.korean, fill=WHITE_COLOUR)
+            self.canvas.itemconfig(self.romanized_label, text=self.current_word.romanized)
 
     def save_card(self):
         word = self.words[self.current_index]
@@ -117,3 +124,6 @@ class FlashCard:
                 writer = csv.DictWriter(csv_file, fieldnames = headers)
                 writer.writeheader()
                 writer.writerow(new_data)
+
+    def change_mode(self):
+        self.english_mode = not self.english_mode

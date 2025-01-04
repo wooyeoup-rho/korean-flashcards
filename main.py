@@ -2,9 +2,16 @@ from tkinter import *
 from tkinter import messagebox, filedialog
 from CardButton import CardButton
 import csv, random, os, shutil
-from resources import resource_path, BACKGROUND_COLOR, KOREAN_FONT, BLUE_COLOUR
+from resources import resource_path, BACKGROUND_COLOR, KOREAN_FONT, BLUE_COLOUR, BLACK_COLOUR, ENGLISH_FONT
 from Word import Word
 from FlashCard import FlashCard
+
+from transformers import pipeline, set_seed
+import torch
+from multiprocessing import freeze_support
+import transliter as tl
+from googletrans import Translator
+import asyncio
 
 # ---------------------------- FUNCTIONS ------------------------------- #
 def load_words_from_csv(file_path):
@@ -100,115 +107,185 @@ def on_close():
 
     window.destroy()
 
+async def translate_text(korean_phrase):
+    translator = Translator()
+    result = await translator.translate(korean_phrase, src="ko", dest="en")
+    return result.text
+
+def generate_korean_phrase(max_length=10):
+    generator = pipeline('text-generation',
+                         model='skt/kogpt2-base-v2',
+                         device=0 if torch.cuda.is_available() else -1)
+
+    set_seed(int(seed_widget.get()))
+
+    prompt = f"{flashcard.words[flashcard.current_index].korean} "
+
+    output = generator(prompt,
+                       max_new_tokens=max_length,
+                       num_return_sequences=1,
+                       temperature=0.25,
+                       top_k=20,
+                       top_p=0.9)
+
+    phrase = output[0]['generated_text']
+
+    # Translates phrase to English
+    translated_phrase = asyncio.run(translate_text(phrase))
+
+    # Gets the romanized phrase
+    romanized_phrase = tl.ko(phrase)
+
+    print(f"Phrase:\t{phrase}\nTranslated:\t{translated_phrase}\nRomanized:\t{romanized_phrase}")
+
+    combined_phrase = Word(phrase, translated_phrase, romanized_phrase)
+    flashcard.get_card(word=combined_phrase)
+
 # ---------------------------- UI SETUP ------------------------------- #
-window = Tk()
-window.title("Korean Flashcards")
-window.config(padx=100, pady=0, bg=BACKGROUND_COLOR)
-window.minsize(1150, 800)
-window.resizable(False, False)
-window.rowconfigure(0, pad=100)
-window.rowconfigure(2, pad=50)
+if __name__ == "__main__":
+    freeze_support()
 
-icon_photo = PhotoImage(file=resource_path("assets/images/icon.png"))
-window.iconphoto(False, icon_photo)
+    window = Tk()
+    window.title("Korean Flashcards")
+    window.config(padx=100, pady=0, bg=BACKGROUND_COLOR)
+    window.minsize(1150, 950)
+    window.resizable(False, False)
+    window.rowconfigure(0, pad=100)
+    window.rowconfigure(2, pad=50)
+    window.rowconfigure(4, pad=50)
 
-words = load_words_from_csv(resource_path("assets/data/data.csv"))
-flashcard = FlashCard(window, words)
+    icon_photo = PhotoImage(file=resource_path("assets/images/icon.png"))
+    window.iconphoto(False, icon_photo)
 
-# BUTTONS
-romanize_button = CardButton(
-    window,
-    "assets/images/buttons/translate_button.png",
-    "assets/images/buttons/translate_button_active.png",
-    flashcard.toggle_romanized
-)
-romanize_button.grid(row=0, column=0)
+    words = load_words_from_csv(resource_path("assets/data/data.csv"))
+    flashcard = FlashCard(window, words)
 
-audio_button = CardButton(
-    window,
-    "assets/images/buttons/audio_button.png",
-    "assets/images/buttons/audio_button_active.png",
-    flashcard.play_audio
-)
-audio_button.grid(row=0, column=1)
+    # BUTTONS
+    romanize_button = CardButton(
+        window,
+        "assets/images/buttons/translate_button.png",
+        "assets/images/buttons/translate_button_active.png",
+        flashcard.toggle_romanized
+    )
+    romanize_button.grid(row=0, column=0)
 
-flip_button = CardButton(
-    window,
-    "assets/images/buttons/flip_button.png",
-    "assets/images/buttons/flip_button_active.png",
-    flashcard.flip_card
-)
-flip_button.grid(row=0, column=2)
+    audio_button = CardButton(
+        window,
+        "assets/images/buttons/audio_button.png",
+        "assets/images/buttons/audio_button_active.png",
+        flashcard.play_audio
+    )
+    audio_button.grid(row=0, column=1)
 
-shuffle_button = CardButton(
-    window,
-    "assets/images/buttons/mix_button.png",
-    "assets/images/buttons/mix_button_active.png",
-    shuffle_words
-)
-shuffle_button.grid(row=0, column=3)
+    flip_button = CardButton(
+        window,
+        "assets/images/buttons/flip_button.png",
+        "assets/images/buttons/flip_button_active.png",
+        flashcard.flip_card
+    )
+    flip_button.grid(row=0, column=2)
 
-load_button = CardButton(
-    window,
-    "assets/images/buttons/load_button.png",
-    "assets/images/buttons/load_button_active.png",
-    load_words
-)
-load_button.grid(row=0, column=4)
+    shuffle_button = CardButton(
+        window,
+        "assets/images/buttons/mix_button.png",
+        "assets/images/buttons/mix_button_active.png",
+        shuffle_words
+    )
+    shuffle_button.grid(row=0, column=3)
 
-dunno_button = CardButton(
-    window,
-    "assets/images/buttons/dunno_button.png",
-    "assets/images/buttons/dunno_button_active.png",
-    flashcard.dont_know_word
-)
-dunno_button.grid(row=2, column=1)
+    load_button = CardButton(
+        window,
+        "assets/images/buttons/load_button.png",
+        "assets/images/buttons/load_button_active.png",
+        load_words
+    )
+    load_button.grid(row=0, column=4)
 
-know_button = CardButton(
-    window,
-    "assets/images/buttons/know_button.png",
-    "assets/images/buttons/know_button_active.png",
-    flashcard.next_word
-)
-know_button.grid(row=2, column=2)
+    dunno_button = CardButton(
+        window,
+        "assets/images/buttons/dunno_button.png",
+        "assets/images/buttons/dunno_button_active.png",
+        flashcard.dont_know_word
+    )
+    dunno_button.grid(row=2, column=1)
 
-left_button = CardButton(
-    window,
-    "assets/images/buttons/left_button.png",
-    "assets/images/buttons/left_button_active.png",
-    flashcard.prev_word
-)
-left_button.grid(row=2, column=0)
+    know_button = CardButton(
+        window,
+        "assets/images/buttons/know_button.png",
+        "assets/images/buttons/know_button_active.png",
+        flashcard.next_word
+    )
+    know_button.grid(row=2, column=2)
 
-right_button = CardButton(
-    window,
-    "assets/images/buttons/right_button.png",
-    "assets/images/buttons/right_button_active.png",
-    flashcard.next_word
-)
-right_button.grid(row=2, column=3)
+    left_button = CardButton(
+        window,
+        "assets/images/buttons/left_button.png",
+        "assets/images/buttons/left_button_active.png",
+        flashcard.prev_word
+    )
+    left_button.grid(row=2, column=0)
 
-reset_button = CardButton(
-    window,
-    "assets/images/buttons/reset_button.png",
-    "assets/images/buttons/reset_button_active.png",
-    reset
-)
-reset_button.grid(row=2, column=4)
+    right_button = CardButton(
+        window,
+        "assets/images/buttons/right_button.png",
+        "assets/images/buttons/right_button_active.png",
+        flashcard.next_word
+    )
+    right_button.grid(row=2, column=3)
 
-frame = Frame(window)
-frame.grid(row=1, column=4, rowspan=2, sticky="nw", padx=(50,0), pady=(10,0))
+    reset_button = CardButton(
+        window,
+        "assets/images/buttons/reset_button.png",
+        "assets/images/buttons/reset_button_active.png",
+        reset
+    )
+    reset_button.grid(row=2, column=4)
 
-word_listbox = Listbox(frame, selectmode = SINGLE, height=20, width=10, font=(KOREAN_FONT, 12, "bold"), relief="solid", borderwidth=10, selectbackground=BLUE_COLOUR)
-word_listbox.grid(row=0, column=4)
+    frame = Frame(window)
+    frame.grid(row=1, column=4, rowspan=1, sticky="nw", padx=(50,0), pady=(10,0))
 
-scrollbar = Scrollbar(frame, orient=VERTICAL, command=word_listbox.yview)
-scrollbar.grid(row=0, column=5, sticky="ns", rowspan=3)
+    word_listbox = Listbox(frame, selectmode = SINGLE, height=20, width=10, font=(KOREAN_FONT, 12, "bold"), relief="solid", borderwidth=10, selectbackground=BLUE_COLOUR)
+    word_listbox.grid(row=0, column=4)
 
-word_listbox.config(yscrollcommand = scrollbar.set)
+    scrollbar = Scrollbar(frame, orient=VERTICAL, command=word_listbox.yview)
+    scrollbar.grid(row=0, column=5, sticky="ns", rowspan=3)
 
-populate_list()
-word_listbox.bind("<<ListboxSelect>>", select_word)
+    word_listbox.config(yscrollcommand = scrollbar.set)
 
-window.protocol("WM_DELETE_WINDOW", on_close)
-window.mainloop()
+    populate_list()
+    word_listbox.bind("<<ListboxSelect>>", select_word)
+
+    # TEST
+    mode_button = CardButton(
+        window,
+        "assets/images/buttons/mode_button.png",
+        "assets/images/buttons/mode_button_active.png",
+        flashcard.get_card
+    )
+    mode_button.grid(row=4, column=0)
+
+    word_button = CardButton(
+        window,
+        "assets/images/buttons/word_button.png",
+        "assets/images/buttons/word_button_active.png",
+        flashcard.get_card
+    )
+    word_button.grid(row=4, column=1)
+
+    example_button = CardButton(
+        window,
+        "assets/images/buttons/example_button.png",
+        "assets/images/buttons/example_button_active.png",
+        generate_korean_phrase
+    )
+    example_button.grid(row=4, column=2)
+
+    seed_label = Label(window, text="SEED VALUE", font=(ENGLISH_FONT, 18, "bold"), bg=BACKGROUND_COLOR)
+    seed_label.grid(row=4, column=3)
+
+    seed_widget = Spinbox(window, from_=0, to=100, increment=1, width=10, font=(ENGLISH_FONT, 12, "bold"),
+                          highlightthickness=10, highlightcolor=BLACK_COLOUR, highlightbackground=BLACK_COLOUR)
+    seed_widget.grid(row=4, column=4)
+
+    window.protocol("WM_DELETE_WINDOW", on_close)
+    window.mainloop()
